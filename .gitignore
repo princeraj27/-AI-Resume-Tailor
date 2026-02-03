@@ -1,0 +1,13 @@
+# System Files
+.DS_Store
+Thumbs.db
+
+# IDEs
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Project Local
+tmp/
+.temp/
