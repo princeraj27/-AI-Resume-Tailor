@@ -1,6 +1,6 @@
 /**
  * Resume Parser - Heuristic-based section detection
- * Ported from Python backend
+ * Improved to handle various PDF formatting styles
  */
 
 export interface ResumeSections {
@@ -11,13 +11,97 @@ export interface ResumeSections {
     other: string;
 }
 
-const SECTION_HEADERS: Record<string, string[]> = {
-    experience: ['experience', 'work experience', 'employment', 'work history', 'professional experience'],
-    education: ['education', 'academic background', 'qualifications', 'education & certifications'],
-    skills: ['skills', 'technical skills', 'competencies', 'technologies', 'core competencies'],
-    projects: ['projects', 'personal projects', 'academic projects', 'key projects'],
-    certifications: ['certifications', 'courses', 'licenses'],
+// More comprehensive header patterns
+const SECTION_PATTERNS: Record<keyof ResumeSections, RegExp[]> = {
+    experience: [
+        /^experience$/i,
+        /^work\s*experience$/i,
+        /^professional\s*experience$/i,
+        /^employment(\s*history)?$/i,
+        /^work\s*history$/i,
+        /^career\s*history$/i,
+        /^relevant\s*experience$/i,
+        /^workexperience$/i,
+    ],
+    education: [
+        /^education$/i,
+        /^academic\s*(background|qualifications)?$/i,
+        /^qualifications?$/i,
+        /^education\s*[&]\s*certifications?$/i,
+        /^educational\s*background$/i,
+    ],
+    skills: [
+        /^skills?$/i,
+        /^technical\s*skills?$/i,
+        /^technicalskills?$/i,
+        /^core\s*competenc(ies|y)$/i,
+        /^competenc(ies|y)$/i,
+        /^technologies?$/i,
+        /^programming\s*(languages?|skills?)?$/i,
+        /^tech\s*stack$/i,
+        /^expertise$/i,
+        /^areas?\s*of\s*expertise$/i,
+    ],
+    projects: [
+        /^projects?$/i,
+        /^personal\s*projects?$/i,
+        /^academic\s*projects?$/i,
+        /^key\s*projects?$/i,
+        /^side\s*projects?$/i,
+        /^notable\s*projects?$/i,
+    ],
+    other: [
+        /^certifications?$/i,
+        /^courses?$/i,
+        /^licenses?$/i,
+        /^awards?$/i,
+        /^achievements?$/i,
+        /^publications?$/i,
+        /^interests?$/i,
+        /^hobbies?$/i,
+        /^activities?$/i,
+        /^summary$/i,
+        /^objective$/i,
+        /^about(\s*me)?$/i,
+        /^profile$/i,
+    ],
 };
+
+/**
+ * Clean a line for header matching
+ */
+function cleanLineForHeader(line: string): string {
+    return line
+        .trim()
+        .replace(/[:\-\|•●○■□▪▫→►▶]/g, '')
+        .replace(/\s+/g, ' ')
+        .trim();
+}
+
+/**
+ * Check if a line looks like a section header
+ */
+function detectSectionHeader(line: string): keyof ResumeSections | null {
+    const cleaned = cleanLineForHeader(line);
+
+    if (cleaned.length > 40 || cleaned.length < 2) {
+        return null;
+    }
+
+    if (cleaned.split(/\s+/).length > 4) {
+        return null;
+    }
+
+    for (const [section, patterns] of Object.entries(SECTION_PATTERNS)) {
+        for (const pattern of patterns) {
+            if (pattern.test(cleaned)) {
+                return section as keyof ResumeSections;
+            }
+        }
+    }
+
+    return null;
+}
 
 /**
  * Split resume text into sections based on headers
@@ -35,37 +119,25 @@ export function parseSections(text: string): ResumeSections {
     let currentSection: keyof ResumeSections = 'other';
 
     for (const line of lines) {
-        const lineClean = line.trim().toLowerCase();
+        const detectedSection = detectSectionHeader(line);
 
-        // Check if line matches a known header
-        let isHeader = false;
-
-        for (const [section, keywords] of Object.entries(SECTION_HEADERS)) {
-            // Specific check: lines that are short and contain keywords
-            if (lineClean.length < 50 && keywords.some((k) => k === lineClean)) {
-                // Map certifications to other, otherwise use the section name
-                currentSection = section === 'certifications' ? 'other' : (section as keyof ResumeSections);
-                isHeader = true;
-                break;
-            }
-
-            // Fuzzy check for headers like "Professional Experience"
-            if (
-                lineClean.length < 50 &&
-                keywords.some((k) => lineClean.includes(k)) &&
-                lineClean.split(/\s+/).length < 4
-            ) {
-                // Map certifications to other, otherwise use the section name
-                currentSection = section === 'certifications' ? 'other' : (section as keyof ResumeSections);
-                isHeader = true;
-                break;
-            }
+        if (detectedSection) {
+            currentSection = detectedSection;
+            continue;
         }
 
-        if (!isHeader) {
+        if (line.trim()) {
             sections[currentSection] += line + '\n';
         }
     }
+
+    console.log('Parsed sections:', {
+        experience: sections.experience.length,
+        education: sections.education.length,
+        skills: sections.skills.length,
+        projects: sections.projects.length,
+        other: sections.other.length,
+    });
 
     return sections;
 }

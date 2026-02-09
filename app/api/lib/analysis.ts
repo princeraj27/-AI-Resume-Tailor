@@ -34,20 +34,27 @@ export interface AnalysisResult {
 function calculateFormattingScore(text: string, sections: ResumeSections): number {
     let score = 100;
 
-    // Penalize missing critical sections
-    if (!sections.experience.trim()) score -= 20;
-    if (!sections.education.trim()) score -= 15;
-    if (!sections.skills.trim()) score -= 15;
+    // Penalize missing critical sections (but less harshly)
+    if (!sections.experience.trim()) score -= 15;
+    if (!sections.education.trim()) score -= 10;
+    if (!sections.skills.trim()) score -= 10;
 
     // Penalize very short content
-    if (text.length < 500) score -= 30;
+    if (text.length < 300) score -= 25;
+    else if (text.length < 500) score -= 15;
+    else if (text.length < 800) score -= 5;
 
     // Check for bullet points
-    if (!text.includes('-') && !text.includes('•') && !text.includes('*')) {
-        score -= 20;
+    if (!text.includes('-') && !text.includes('•') && !text.includes('*') && !text.includes('●')) {
+        score -= 10;
     }
 
-    return Math.max(0, score);
+    // Bonus for having good structure
+    if (sections.experience.trim() && sections.skills.trim()) {
+        score += 10;
+    }
+
+    return Math.max(0, Math.min(100, score));
 }
 
 /**
@@ -91,16 +98,18 @@ export async function analyzeResume(
     // 1. Parse sections
     const sections = parseSections(resumeText);
 
-    // 2. Base score (Content Quality) - check for metrics
-    const expText = sections.experience;
-    const metricCount = (expText.match(/\d+/g) || []).length;
-    const metricScore = Math.min(metricCount * 2, 20);
+    // 2. Base score (Content Quality) - check for metrics/numbers in experience
+    const expText = sections.experience || resumeText; // fallback to full text if no experience section
+    const metricMatches = expText.match(/\d+/g) || [];
+    const metricCount = metricMatches.length;
+    // More generous metric scoring
+    const metricScore = Math.min(metricCount * 3, 30);
 
     // 3. Job description matching
-    let jdMatchScore = 50; // Default if no JD
+    let jdMatchScore = 70; // Default reasonable score if no JD provided
     let semanticBreakdown: Record<string, number> = {};
 
-    if (jobDescription) {
+    if (jobDescription && jobDescription.trim().length > 0) {
         semanticBreakdown = calculateSectionRelevance(sections, jobDescription);
 
         // Weighted average for JD match
@@ -109,23 +118,28 @@ export async function analyzeResume(
             (semanticBreakdown.skills || 0) * 0.4 +
             (semanticBreakdown.projects || 0) * 0.1 +
             (semanticBreakdown.education || 0) * 0.1;
+
+        // Ensure minimum score if there's content
+        if (resumeText.length > 500 && jdMatchScore < 30) {
+            jdMatchScore = 30;
+        }
     }
 
     // 4. Formatting score
     const formattingScore = calculateFormattingScore(resumeText, sections);
 
-    // Score breakdown
+    // Score breakdown (all scores normalized to 0-100)
     const scoreBreakdown: ScoreBreakdown = {
-        skills_match: Math.round(jdMatchScore * 100) / 100,
-        content_impact: metricScore * 5, // Normalize
+        skills_match: Math.round(jdMatchScore),
+        content_impact: Math.round(metricScore * (100 / 30)), // Normalize to 0-100
         formatting_score: formattingScore,
     };
 
-    // Final score
+    // Final score - weighted average
     const totalScore = Math.round(
-        scoreBreakdown.skills_match * 0.5 +
-        scoreBreakdown.content_impact * 0.3 +
-        scoreBreakdown.formatting_score * 0.2
+        scoreBreakdown.skills_match * 0.4 +
+        scoreBreakdown.content_impact * 0.25 +
+        scoreBreakdown.formatting_score * 0.35
     );
 
     // 5. Bullet-Level Analysis (LLM)

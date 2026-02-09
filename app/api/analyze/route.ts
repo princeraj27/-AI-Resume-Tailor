@@ -49,8 +49,18 @@ export async function POST(request: NextRequest) {
         // Extract text from PDF
         const fullText = await extractTextFromPDF(buffer);
 
+        // Debug: Log first 500 chars of extracted text
+        console.log('=== Extracted PDF Text (first 500 chars) ===');
+        console.log(fullText.slice(0, 500));
+        console.log('=== End of sample ===');
+        console.log('Total text length:', fullText.length);
+
         // Run analysis
         const analysisResult = await analyzeResume(fullText, jobDescription || undefined);
+
+        console.log('=== Analysis Result ===');
+        console.log('Total score:', analysisResult.total_score);
+        console.log('Section scores:', analysisResult.section_scores);
 
         // Extract skills for legacy frontend support
         const skills = extractSkills(fullText);
